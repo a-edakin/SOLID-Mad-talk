@@ -24,21 +24,32 @@ func main() {
 		log.Fatal("need to provide a proper URL to parse")
 	}
 
-	req, err := http.NewRequest("GET", args[1], nil)
+	posts, err := getPosts(args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	for _, post := range posts {
+		fmt.Println(post)
+	}
+}
+
+func getPosts(url string) ([]PostData, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	defer res.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	posts := []PostData{}
@@ -60,7 +71,5 @@ func main() {
 
 	})
 
-	for _, post := range posts {
-		fmt.Println(post)
-	}
+	return posts, nil
 }
