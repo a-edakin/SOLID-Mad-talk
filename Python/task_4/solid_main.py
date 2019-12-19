@@ -5,27 +5,30 @@ import os
 import sys
 
 import requests
+import telebot
 from bs4 import BeautifulSoup
 
 
 def args_loader():
     if len(sys.argv) == 3:
-        return Config(sys.argv[1], sys.argv[2])
+        return Config(sys.argv[1], sys.argv[2], sys.argv[2:5])
 
 
 def env_loader():
     output_type = os.environ.get('OUTPUT_TYPE')
     posts_url = os.environ.get('POSTS_URL')
+    telegram_token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('CHAT_ID')
 
     if output_type and posts_url:
-        return Config(output_type, posts_url)
+        return Config(output_type, posts_url, telegram_token, chat_id)
 
 
 def json_loader():
     with open('config.json') as json_string:
         raw_config = json.loads(json_string.read())
-        if raw_config['output_type'] and raw_config['posts_url']:
-            return Config(raw_config['output_type'], raw_config['posts_url'])
+        if raw_config.get('output_type') and raw_config.get('posts_url'):
+            return Config(raw_config.pop('output_type'), raw_config.pop('posts_url'), **raw_config)
 
 
 loaders = [
@@ -36,9 +39,11 @@ loaders = [
 
 
 class Config:
-    def __init__(self, output_type: str, posts_url: str):
+    def __init__(self, output_type: str, posts_url: str, telegram_token=None, chat_id=None):
         self.output_type = output_type
         self.posts_url = posts_url
+        self.telegram_token = telegram_token
+        self.chat_id = chat_id
 
 
 def load_config() -> Config:
@@ -66,6 +71,29 @@ def get_posts(url):
     return posts
 
 
+class TelegramBaseClient:
+    def __init__(self, token: str, chat_id: str):
+        self.token = token
+        self.chat_id = chat_id
+
+    def send_message(self, posts: list):
+        raise NotImplemented()
+
+
+class TelegramClient(TelegramBaseClient):
+
+    def get_bot(self):
+        return telebot.TeleBot(self.token)
+
+    def send_message(self, posts: list):
+        bot = self.get_bot()
+        message = ''
+        for post in posts:
+            message += f'Title: {post["title"]} \n'
+            message += f'Author {post["author"]}, Date {post["date"]}\n\n'
+        bot.send_message(self.chat_id, message)
+
+
 class Output:
     def __init__(self, posts):
         self.posts = posts
@@ -90,9 +118,16 @@ class SavePosts(Output):
                 file.write(f'Author {post["author"]}, Date {post["date"]}\n\n')
 
 
+class SendToChat(Output):
+    def output(self):
+        client = TelegramClient(config.telegram_token, config.chat_id)
+        client.send_message(self.posts)
+
+
 output_types = {
     'console': DisplayPosts,
     'file': SavePosts,
+    'telegram': SendToChat,
 }
 
 if __name__ == '__main__':
